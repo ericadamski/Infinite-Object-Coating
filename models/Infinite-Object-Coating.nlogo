@@ -1,12 +1,18 @@
-breed [vertices vertex]
+breed [particles particle]
 breed [amoebots amoebot]
 
 undirected-link-breed [edges edge]
 
+particles-own [ occupied? ]
+
+;; movment can be idle, expanded, contracted, handoverContracted ...;;
 amoebots-own [
               direction
-              state ;; this can be expanded, contracted ...
-              incident-egdes ;; a list of all incident edges at the current location
+              head
+              tail
+              state 
+              incident-edges ;; a list of all incident edges at the current location, held as a list of destinations
+              neighbours     ;; Two particles occupying adjacent nodes are defined to be connected and we refer to such particles as neighbors
              ]
 
 to setup 
@@ -25,31 +31,31 @@ end
 ;;SETUP;;
 
 to setup-graph
-  setup-vertices
+  setup-particles
   setup-edges
 end
 
-to setup-vertices
-  set-default-shape vertices "circle"
+to setup-particles
+  set-default-shape particles "circle"
   ;; world-width, world-height
-  let number-of-vertices ceiling world-height * (world-width / (turtle-size + seperation))
-  show number-of-vertices
+  let number-of-particles ceiling world-height * (world-width / (turtle-size + seperation))
   let ycounter 1
   let xcounter 1
   let modifier 0
   
-  while [ycounter < (world-height mod number-of-vertices) ]
+  while [ycounter < (world-height mod number-of-particles) ]
   [ 
     
     ifelse (ycounter mod 2 = 0) [ set modifier 1 set xcounter xcounter + seperation / 2 ]
                                 [ set modifier 0 set xcounter xcounter + seperation ]
       
-    while [ xcounter < (world-width mod (number-of-vertices - modifier)) ]
+    while [ xcounter < (world-width mod (number-of-particles - modifier)) ]
     [                     
-      create-vertices 1 [
+      create-particles 1 [
         set size turtle-size
+        set occupied? false
         set color gray
-        setxy ((world-width mod (number-of-vertices - modifier)) - xcounter) ((world-height mod number-of-vertices) - ycounter)
+        setxy ((world-width mod (number-of-particles - modifier)) - xcounter) ((world-height mod number-of-particles) - ycounter)
       ]
       set xcounter xcounter + seperation
     ]
@@ -60,13 +66,13 @@ end
 
 to setup-edges
   ;; every second row
-  ;; every second vertex in that row will have 6 edges
-  foreach [self] of vertices [
+  ;; every second particle in that row will have 6 edges
+  foreach [self] of particles [
    if ( [ycor] of ? mod 2 = 0 or [xcor] of ? mod 2 != 0 )[
      ask ? [
        ;;set color yellow
        let me ?
-       foreach filter [ distance ? < ((2 * turtle-size) + seperation) and not member? ? link-neighbors ] [self] of vertices [
+       foreach filter [ distance ? < ((2 * turtle-size) + seperation) and not member? ? link-neighbors ] [self] of particles [
         if ( ? != me ) [ ask ? [ create-edge-with me [ set color green ] ] ]
        ]
      ]
@@ -76,6 +82,64 @@ end
 
 to setup-amoebots
   set-default-shape amoebots "circle"
+  let counter 0
+  
+  while [ counter < population-size ]
+  [
+    create-amoebots 1 [
+      set color black
+      set size 0.1 + turtle-size
+      setxy [xcor] of particle counter [ycor] of particle counter
+      ask particle counter [ set occupied? true ]
+    ]
+    set counter increment counter
+  ]
+end
+
+to turn
+  ;;set state
+  ;;set flags
+  ;;do movement
+end
+
+to move
+end
+
+;; HELPERS ;;
+
+to-report next-move
+  calculate-incident-edges
+  let free-edges filter [last ? = false] incident-edges
+  if (not empty? free-edges) [ report first but-first last free-edges ]
+end
+
+to calculate-incident-edges
+  ask [head] of self [
+    let counter 0
+    foreach [self] of link-neighbors [
+      let add list counter ?
+      if ([occupied?] of ?) [ set neighbours union (list ?) neighbours set add sentence add true ]
+      set incident-edges fput add incident-edges
+      set counter increment counter
+    ] 
+  ]
+end
+
+to-report increment [counter]
+  report counter + 1
+end
+
+to-report intersection [list1 list2]
+  report filter [ member? ? list1 ] list2
+end
+
+to-report union [list1 list2]
+  if empty? list1 [ report list2 ]
+  if empty? list2 [ report list1 ]
+  let intersect intersection list1 list2
+  let not-intersect2 filter [ not member? ? intersect ] list2
+  let not-intersect1 filter [ not member? ? intersect ] list1
+  report sentence sentence not-intersect1 not-intersect2 intersect
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -131,7 +195,7 @@ turtle-size
 turtle-size
 0.25
 0.95
-0.35
+0.45
 0.05
 1
 NIL
@@ -146,8 +210,23 @@ seperation
 seperation
 1
 7
-1
+3
 2
+1
+NIL
+HORIZONTAL
+
+SLIDER
+10
+156
+233
+189
+population-size
+population-size
+1
+100
+1
+1
 1
 NIL
 HORIZONTAL
