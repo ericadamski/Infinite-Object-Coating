@@ -1,18 +1,23 @@
 breed [particles particle]
 breed [amoebots amoebot]
+breed [heads head]
+breed [tails tail]
 
 undirected-link-breed [edges edge]
 
 particles-own [ occupied? ]
 
-;; movment can be idle, expanded, contracted, handoverContracted ...;;
+heads-own [ current-particle ]
+tails-own [ current-particle ]
+
 amoebots-own [
               direction
-              head
-              tail
-              state 
-              incident-edges ;; a list of all incident edges at the current location, held as a list of destinations
-              neighbours     ;; Two particles occupying adjacent nodes are defined to be connected and we refer to such particles as neighbors
+              my-head            ;; head breed
+              my-tail            ;; tail breed
+              phase              ;; inactive, follower, leader
+              incident-edges     ;; a list of all incident edges at the current location, held as a list of destinations
+              neighbours         ;; Two particles occupying adjacent nodes are defined to be connected and we refer to such particles as neighbors
+              movement           ;; movment can be idle, expanded, contracted, handoverContracted ...;;
              ]
 
 to setup 
@@ -24,6 +29,8 @@ to setup
   
   setup-graph
   setup-amoebots
+  
+  ask-concurrent amoebots [ calculate-incident-edges ]
   
   display
 end 
@@ -81,25 +88,44 @@ to setup-edges
 end
 
 to setup-amoebots
-  set-default-shape amoebots "circle"
+  set-default-shape heads "circle"
+  set-default-shape tails "circle"
   let counter 0
   
   while [ counter < population-size ]
   [
-    create-amoebots 1 [
+    let tmp-head 0
+    let tmp-tail 0
+    let part 0
+    
+    ask particle counter [ set occupied? true set part self ]
+    
+    create-heads 1 [
       set color black
       set size 0.1 + turtle-size
-      setxy [xcor] of particle counter [ycor] of particle counter
-      ask particle counter [ set occupied? true ]
+      set current-particle part
+      set tmp-head self
+      setxy [xcor] of part [ycor] of part
+    ]
+    create-tails 1 [
+      set color black
+      set size 0.1 + turtle-size
+      set current-particle part
+      set tmp-tail self
+      setxy [xcor] of part [ycor] of part
+    ]
+    create-amoebots 1 [
+      set phase "inactive"
+      set my-head tmp-head
+      set my-tail tmp-tail
+      set incident-edges []
+      set neighbours []
+      set phase "inactive"
+      set movement "idle"
+      setxy [xcor] of part [ycor] of part;;hide-turtle
     ]
     set counter increment counter
   ]
-end
-
-to turn
-  ;;set state
-  ;;set flags
-  ;;do movement
 end
 
 to move
@@ -113,15 +139,141 @@ to-report next-move
   if (not empty? free-edges) [ report first but-first last free-edges ]
 end
 
-to calculate-incident-edges
-  ask [head] of self [
-    let counter 0
-    foreach [self] of link-neighbors [
-      let add list counter ?
-      if ([occupied?] of ?) [ set neighbours union (list ?) neighbours set add sentence add true ]
-      set incident-edges fput add incident-edges
-      set counter increment counter
+to span-forest
+  ;; done := false
+  ;; if inactive and not done
+  ;;    if connected-to-surface?
+  ;;        phase := leader
+  ;;        movement := idle
+  ;;        done := true
+  ;;    if filter neighbours with phase leader or follower not empty
+  ;;        direction := toward first of the filter statement above
+  ;;        phase := follower
+  ;;        done := true
+  ;; if follower and not done
+  ;;    if movement is contracted and connected-to-surface?
+  ;;        phase := leader
+  ;;        movement := idle
+  ;;        done := true
+  ;;    if movement is contracted and direction is expanded
+  ;;        expand to direction (i.e. attempt-handover)
+  ;;        direction := direction of direction
+  ;;    if movement is expanded 
+  ;;        if any neighbours of tail are followers
+  ;;          move := handoverContraction
+  ;;        if no neighbours of tail are followers and no inactive neighbours
+  ;;          move := contract
+  ;; if leader and not done
+  ;;    if contracted
+  ;;      move := expand
+  ;;      direction := next-move
+  ;;    if expanded
+  ;;        if any neighbours of tail ar followers
+  ;;          move := handoverContraction
+  ;;        if no neighbours of tail are followers and no inactive neighbours
+  ;;          move := contract
+  let done false
+  
+  if (phase = "inactive" and not done)
+  [
+    let leader-follower-neighbours [self] of neighbours with [ phase = "leader" or phase = "follower" ]
+    if (connected-to-surface?) 
+    [
+      set phase "leader"
+      idle
+      set done true
+    ]
+    if (not empty? leader-follower-neighbours)
+    [
+      set direction first leader-follower-neighbours
+      set phase "follower"
+      set done true
+    ]
+  ]
+  if (phase = "follower" and not done)
+  [
+    if (movement = "contracted" and connected-to-surface?)
+    [
+      set phase "leader"
+      idle
+      set done true
+    ]
+    if (movement = "contracted" and [movement] of direction = "expanded")
+    [
+      expand
+      set direction [direction] of direction
+    ]
+    if (movement = "expanded")
+    [
+      let tail-followers filter [ [phase] of ? = "follower" ] [neighbours] of my-tail
+      ifelse (not empty? tail-followers)
+      [
+        ask-concurrent first tail-followers [ handover ]
+      ]
+      [ contract ]
+    ]
+  ]
+  if (phase = "leader" and not done)
+  [
+    if (movement = "contracted")
+    [
+      expand
+      set direction next-move
     ] 
+    if (movement = "expanded")
+    [
+      let tail-followers filter [ [phase] of ? = "follower" ] [neighbours] of my-tail
+      ifelse (not empty? tail-followers)
+      [
+        ask-concurrent first tail-followers [ handover ]
+      ]
+      [ contract ]
+    ]
+  ]
+end
+
+;; Movement ;;
+to idle
+  set movement "idle"
+end
+
+to expand
+  set movement "expanded"
+end
+
+to contract
+  set movement "contracted"
+end
+
+to handover
+  set movement "handoverContract"
+end
+;;;;;;;;;;;;;;
+
+to-report connected-to-surface?
+  
+end
+
+to calculate-incident-edges
+  let me self
+  ifelse ([current-particle] of my-head != [current-particle] of my-tail)
+  [
+    ;;expanded
+  ]
+  [
+    ;;contracted
+    ask [current-particle] of my-head [
+      let counter 0
+      foreach [self] of link-neighbors [
+        let add list counter ?
+        ask me [
+          ifelse ([occupied?] of ?) [ set neighbours union (list ?) neighbours set add sentence add true ]
+                                    [ set add sentence add false ]
+          set incident-edges fput add incident-edges
+        ]
+        set counter increment counter
+      ]
+    ]
   ]
 end
 
@@ -195,7 +347,7 @@ turtle-size
 turtle-size
 0.25
 0.95
-0.45
+0.55
 0.05
 1
 NIL
@@ -216,20 +368,15 @@ seperation
 NIL
 HORIZONTAL
 
-SLIDER
-10
+CHOOSER
+9
 156
-233
-189
+232
+201
 population-size
 population-size
+196 64 39 27
 1
-100
-1
-1
-1
-NIL
-HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
