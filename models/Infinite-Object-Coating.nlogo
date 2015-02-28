@@ -293,6 +293,7 @@ to handover
 end
 
 to move-amoebot
+  calculate-incident-edges
   if ( movement = "expanded" )
   [ ;; move the head ;; 
     let leader get-leader
@@ -314,8 +315,9 @@ to move-amoebot
     let h head
     ask tail [
       ask current-particle [ move-component ]
+      set current-particle [current-particle] of h
+      setxy [xcor] of h [ycor] of h 
     ]
-    ask tail [ setxy [xcor] of h [ycor] of h ]
   ]
 end
 
@@ -338,30 +340,37 @@ to calculate-incident-edges
   ask head [ set neighbours [] ]
   ask tail [ set neighbours [] ]
   let counter 0
-  if ([current-particle] of head != [current-particle] of tail)
+  if (movement = "expanded")
   [
+    ask particles [ set color grey ]
     ;;expanded
     ask [current-particle] of tail [
-      foreach [self] of link-neighbors [
+      ;;show link-neighbors
+      ask link-neighbors [ set color red ]
+      foreach [self] of link-neighbors[
         let amoeba ?
         let occupied [occupied?] of ?
         if (occupied) [ set amoeba [occupier] of ? ]
-        let add list counter amoeba
-        ask me [
-          ask tail [ set neighbours union (list amoeba) neighbours ]
-          set incident-edges fput add incident-edges
+        if (not occupied)
+        [
+          let add list counter amoeba
+          ask me [
+            ask tail [ set neighbours union (list amoeba) neighbours ]
+            set incident-edges fput add incident-edges
+          ]
+          set counter increment counter
         ]
-        set counter increment counter
       ]
     ]
   ]
   ;;contracted
   ask [current-particle] of head [
+    ;;show [self] of link-neighbors
+    ask link-neighbors [ set color red ]
     foreach [self] of link-neighbors [
       let amoeba ?
       let occupied [occupied?] of ?
-      if (occupied) [ set amoeba [occupier] of ? ]
-      if (not member? amoeba [neighbours] of [tail] of me)
+      if (not occupied)
       [
         let add list counter amoeba
         ask me [
@@ -486,10 +495,10 @@ CHOOSER
 156
 232
 201
-population-size
-population-size
+population-size-5
+population-size-5
 196 64 39 27
-2
+0
 
 BUTTON
 178
@@ -524,6 +533,21 @@ NIL
 NIL
 NIL
 1
+
+SLIDER
+13
+242
+230
+275
+population-size
+population-size
+1
+1000
+64
+1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
